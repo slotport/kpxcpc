@@ -32,11 +32,14 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/natefinch/npipe"
 	"gitlab.com/nwwdles/kpxcpc/kpclient"
 )
 
@@ -93,8 +96,15 @@ func (a *App) connect() error {
 	var err error
 	var conn net.Conn
 	for _, s := range a.opts.sockets {
-		if conn, err = net.Dial("unix", s); err != nil {
-			continue
+		if strings.HasPrefix(s, "\\\\.\\pipe\\") {
+			// Open with Win32 NamedPipe
+			if conn, err = npipe.Dial(s); err != nil {
+				continue
+			}
+		} else {
+			if conn, err = net.Dial("unix", s); err != nil {
+				continue
+			}
 		}
 	}
 	if err != nil {
@@ -295,11 +305,28 @@ func main() {
 	}
 
 	if *socket == "" {
-		// keepassxc changed the socket name in some version
-		runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
-		opts.sockets = []string{
-			filepath.Join(runtimeDir, "kpxc_server"),
-			filepath.Join(runtimeDir, "org.keepassxc.KeePassXC.BrowserServer"),
+		if runtime.GOOS == "windows" {
+			user, err := user.Current()
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			username := user.Username
+			// remove 'DOMAIN\' from  'DOMAIN\Username'
+			p := strings.Index(username, "\\")
+			if p >= 0 {
+				username = username[p+1:]
+			}
+			opts.sockets = []string{
+				"\\\\.\\pipe\\org.keepassxc.KeePassXC.BrowserServer_" + username,
+			}
+		} else {
+			// keepassxc changed the socket name in some version
+			runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+			opts.sockets = []string{
+				filepath.Join(runtimeDir, "kpxc_server"),
+				filepath.Join(runtimeDir, "org.keepassxc.KeePassXC.BrowserServer"),
+			}
 		}
 	} else {
 		opts.sockets = []string{*socket}
