@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    branches: [ master ]
+
+jobs:
+
+  build:
+    runs-on: windows-2022
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - id: commit
+      uses: pr-mpt/actions-commit-hash@v1
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+
+    - name: Build
+      run: go build -ldflags -s -v .
+
+    - name: Create Release Dir
+      run: |
+        New-Item kpxcpc -ItemType Directory
+        Copy-Item -Path kpxcpc.exe -Destination kpxcpc
+
+    - name: Archive Release
+      uses: thedoctor0/zip-release@master
+      with:
+        type: 'zip'
+        filename: 'kpxcpc-${{ steps.commit.outputs.short }}.zip'
+        path: kpxcpc
+
+    - name: Publish automated release
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: true
+        title: "Automated build for windows platform"
+        files: |
+          kpxcpc-${{ steps.commit.outputs.short }}.zip
